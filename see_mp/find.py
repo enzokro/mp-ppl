@@ -2,7 +2,7 @@ import json
 import zmq
 from super_gradients.training import models
 from super_gradients.common.object_names import Models
-from chaski.dets.video_stream import VideoStreamer
+from see_mp.video_stream import VideoStreamer
 
 
 # initialize ZeroMQ context and socket

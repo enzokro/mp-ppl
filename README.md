@@ -1,6 +1,6 @@
-Simple code to count the number of people and cats in a room.
+Simple code to count how many people and cats are in a room.
 
 
-Video stream is a threaded wrapper around OpenCV VideoCapture.  
+Video stream is a threaded wrapper around the OpenCV video reader.  
 
-See runs the main detection loop.
+`find.py` runs the main detection loop.

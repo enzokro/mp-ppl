@@ -5,7 +5,7 @@ from super_gradients.common.object_names import Models
 from see_mp.video_stream import VideoStreamer
 
 
-# initialize ZeroMQ context and socket
+# initialize zmq context and socket to send detection
 context = zmq.Context()
 socket = context.socket(zmq.PUB)
 socket.bind("tcp://*:6767")
@@ -13,7 +13,10 @@ socket.bind("tcp://*:6767")
 # load the model
 model = models.get(Models.YOLO_NAS_S, pretrained_weights="coco")
 
-# Acquisition loop
+# classes we care about
+targets = ["person", "cat"]
+
+# stream over the default camera
 with VideoStreamer(0) as stream:
     while True:
         img = stream.get_current_frame()
@@ -33,16 +36,12 @@ with VideoStreamer(0) as stream:
             response = {"text": text}
 
         else:
-            # count the number of people
-            num_people = sum([1 for o in labels if label_names[o] == "person"])
+            response = {}
+            # count the number of targets
+            for targ in targets:
+                count = sum([1 for l in labels if label_names[l] == targ])
+                response[f"num_{targ}"] = count
 
-            # count the number of cats
-            num_cats = sum([1 for o in labels if label_names[o] == "cat"])
-
-            response = {
-                "num_people": num_people,
-                "num_cats": num_cats,
-            }
 
         # send the json string over the socket
         json_response = json.dumps(response)

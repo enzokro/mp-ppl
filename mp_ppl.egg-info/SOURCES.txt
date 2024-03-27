@@ -1,8 +1,0 @@
-README.md
-setup.py
-mp_ppl.egg-info/PKG-INFO
-mp_ppl.egg-info/SOURCES.txt
-mp_ppl.egg-info/dependency_links.txt
-mp_ppl.egg-info/entry_points.txt
-mp_ppl.egg-info/requires.txt
-mp_ppl.egg-info/top_level.txt

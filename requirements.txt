@@ -1,6 +1,4 @@
 super-gradients
 flask-socketio
-gevent-websocket
-gunicorn
 opencv-contrib
 fastcore

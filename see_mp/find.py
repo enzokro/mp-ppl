@@ -1,25 +1,24 @@
 import os
-import requests
 from collections import Counter
+import requests
 from fastcore.basics import store_attr
+from fastcore.foundation import L
 from super_gradients.training import models
 from super_gradients.common.object_names import Models
 from see_mp.video_stream import VideoStreamer
 
-
-# connection vars
+# Connection vars
 HOST = os.environ.get('HOST', 'localhost')
 PORT = int(os.environ.get('PORT', 8989))
 DETECTION_URL = f'http://{HOST}:{PORT}/detect'
 
-# model name and detection parameters
-MODEL_NAME = Models.YOLO_NAS_S
-THRESHOLD = 0.6 # TODO: class-based thresholds
+# Model name and detection parameters
+MODEL_NAME = Models.YOLO_NAS_M
+THRESHOLD = 0.6  # TODO: class-based thresholds
 NUM_VALID_FRAMES = 15
 
-# the classes we care about
+# The classes we care about
 TARGETS = ["person", "cat"]
-
 
 class DetectionManager:
     def __init__(self, targets, num_valid_frames, detection_url, threshold):
@@ -28,9 +27,9 @@ class DetectionManager:
         self.continuous_detections = {tar: 0 for tar in targets}
 
     def update_and_send_detections(self, labels, label_names, confidence):
-        if labels.size < 1:
+        if not len(labels):
             self.reset_continuous_counts()
-            return  # Early exit if no detections
+            return
 
         counts = self.count_targets(labels, label_names, confidence)
         self.update_continuous_counts(counts)
@@ -39,51 +38,54 @@ class DetectionManager:
             self.reset_continuous_counts()
             self.previous_counts = counts
             print(f"Sending detection data: {counts}")
-            requests.post(self.detection_url, json=counts)
+            self._send_detections(counts)
+
+    def _send_detections(self, counts):
+        try:
+            response = requests.post(self.detection_url, json=counts)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending detection data: {e}")
 
     def reset_continuous_counts(self):
-        for tar in self.targets:
-            self.continuous_detections[tar] = 0
+        self.continuous_detections = {tar: 0 for tar in self.targets}
 
     def update_continuous_counts(self, current_counts):
         for tar in self.targets:
-            if current_counts[tar] == self.previous_counts[tar]:
-                self.continuous_detections[tar] += 1
-            else:
-                self.continuous_detections[tar] = 1
+            self.continuous_detections[tar] = (
+                self.continuous_detections[tar] + 1
+                if current_counts[tar] == self.previous_counts[tar]
+                else 1
+            )
 
     def should_send_detections(self, counts):
-        return any(self.continuous_detections[tar] >= self.num_valid_frames for tar in self.targets) and \
-               self.previous_counts != counts
-    
+        return (
+            any(self.continuous_detections[tar] >= self.num_valid_frames for tar in self.targets)
+            and self.previous_counts != counts
+        )
+
     def count_targets(self, labels, label_names, confidence):
-        """Counts the number of each target in the labels.
-
-        Only counts if the `confidence` of a detection is above `thr`.
         """
-        # Filter labels by confidence threshold first to minimize iterations
-        filtered_labels = [label_names[label] for i, label in enumerate(labels) if confidence[i] >= self.threshold]
-        # Utilize Counter to count occurrences of each target directly
+        Counts the number of each target in the labels.
+        Only counts if the `confidence` of a detection is above the threshold.
+        """
+        filtered_labels = [label_names[label] for label, conf in zip(labels, confidence) if conf >= self.threshold]
         label_counts = Counter(filtered_labels)
-        # Construct the final counts dict, ensuring all targets are included with a default of 0
-        counts = {tar: label_counts.get(tar, 0) for tar in self.targets}
-        return counts
-    
-    def set_threshold(self, thr):
-        self.threshold = thr
+        return {tar: label_counts.get(tar, 0) for tar in self.targets}
 
+    def set_threshold(self, threshold):
+        self.threshold = threshold
 
 def main():
-
     # Load the detection model
     model = models.get(MODEL_NAME, pretrained_weights="coco")
 
-    # detection manager
+    # Detection manager
     detection_manager = DetectionManager(TARGETS, NUM_VALID_FRAMES, DETECTION_URL, THRESHOLD)
 
     # Stream over the default camera
-    try:
-        with VideoStreamer(0) as stream:
+    with VideoStreamer(0) as stream:
+        try:
             while True:
                 img = stream.get_current_frame()
                 if img is None:
@@ -93,20 +95,20 @@ def main():
                 results = model.predict(img, fuse_model=False)
 
                 # Parse out the detection results
-                boxes = results.prediction.bboxes_xyxy
-                label_names = results.class_names
                 labels = results.prediction.labels
+                label_names = results.class_names
                 confidence = results.prediction.confidence
+                # TODO: draw things with the boxes
+                boxes = results.prediction.bboxes_xyxy
 
-                # run the detection manager
+                # Run the detection manager
                 detection_manager.update_and_send_detections(labels, label_names, confidence)
 
-    except KeyboardInterrupt:
-        stream.stop()
-        raise stream.Break("Stopping the stream thread...")
-    except Exception as e:
-        raise e
-    
+        except KeyboardInterrupt:
+            print("Stopping the stream thread...")
+        except Exception as e:
+            print(f"Error: {e}")
+            raise
 
 if __name__ == "__main__":
     main()

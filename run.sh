@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Doesn't really work for clean shutdowns, but it's a start
+
 # Function to display usage instructions
 usage() {
     echo "Usage: $0 [option]"

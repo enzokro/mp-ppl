@@ -1,49 +1,85 @@
 import os
-import json
-import socket
+import requests
+from collections import Counter
+from fastcore.basics import store_attr
 from super_gradients.training import models
 from super_gradients.common.object_names import Models
 from see_mp.video_stream import VideoStreamer
 
 
-# zmq vars
+# connection vars
 HOST = os.environ.get('HOST', 'localhost')
-PORT = int(os.environ.get('DETECTION_PORT', 6767))
-APP_PORT = int(os.environ.get('FLASK_PORT', 8989))
-DETECTION_URL = f'http://{HOST}:{APP_PORT}/detect'
+PORT = int(os.environ.get('PORT', 8989))
+DETECTION_URL = f'http://{HOST}:{PORT}/detect'
 
-# model name and detection threshold value
+# model name and detection parameters
 MODEL_NAME = Models.YOLO_NAS_S
 THRESHOLD = 0.6 # TODO: class-based thresholds
+NUM_VALID_FRAMES = 15
 
 # the classes we care about
-targets = ["person", "cat"]
+TARGETS = ["person", "cat"]
 
-def count_targets(labels, label_names, confidence, thr=THRESHOLD):
-    """Counts the number of each target in the labels.
+
+class DetectionManager:
+    def __init__(self, targets, num_valid_frames, detection_url, threshold):
+        store_attr()
+        self.previous_counts = {tar: 0 for tar in targets}
+        self.continuous_detections = {tar: 0 for tar in targets}
+
+    def update_and_send_detections(self, labels, label_names, confidence):
+        if labels.size < 1:
+            self.reset_continuous_counts()
+            return  # Early exit if no detections
+
+        counts = self.count_targets(labels, label_names, confidence)
+        self.update_continuous_counts(counts)
+
+        if self.should_send_detections(counts):
+            self.reset_continuous_counts()
+            self.previous_counts = counts
+            print(f"Sending detection data: {counts}")
+            requests.post(self.detection_url, json=counts)
+
+    def reset_continuous_counts(self):
+        for tar in self.targets:
+            self.continuous_detections[tar] = 0
+
+    def update_continuous_counts(self, current_counts):
+        for tar in self.targets:
+            if current_counts[tar] == self.previous_counts[tar]:
+                self.continuous_detections[tar] += 1
+            else:
+                self.continuous_detections[tar] = 1
+
+    def should_send_detections(self, counts):
+        return any(self.continuous_detections[tar] >= self.num_valid_frames for tar in self.targets) and \
+               self.previous_counts != counts
     
-    Only counts if the `confidence` of a detection is above `thr`.
-    """
-    counts = {tar: 0 for tar in targets}
-    for tar in targets:
-        count = sum([1 for i,l in enumerate(labels) if label_names[l] == tar
-                                                    and confidence[i] >= thr])
-        counts[tar] = count
-    return counts
+    def count_targets(self, labels, label_names, confidence):
+        """Counts the number of each target in the labels.
+
+        Only counts if the `confidence` of a detection is above `thr`.
+        """
+        # Filter labels by confidence threshold first to minimize iterations
+        filtered_labels = [label_names[label] for i, label in enumerate(labels) if confidence[i] >= self.threshold]
+        # Utilize Counter to count occurrences of each target directly
+        label_counts = Counter(filtered_labels)
+        # Construct the final counts dict, ensuring all targets are included with a default of 0
+        counts = {tar: label_counts.get(tar, 0) for tar in self.targets}
+        return counts
+    
+    def set_threshold(self, thr):
+        self.threshold = thr
+
 
 def main():
-
-    # Initialize ZeroMQ socket for sending detections
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((HOST, PORT))
 
     # Load the detection model
     model = models.get(MODEL_NAME, pretrained_weights="coco")
 
-    # Number of frames for an updated decision
-    num_valid_frames = 15
-    previous_counts = {tar: 0 for tar in targets}
-    continuous_detections = {tar: 0 for tar in targets}
+    # detection manager
+    detection_manager = DetectionManager(TARGETS, NUM_VALID_FRAMES, DETECTION_URL, THRESHOLD)
 
     # Stream over the default camera
     try:
@@ -62,50 +98,15 @@ def main():
                 labels = results.prediction.labels
                 confidence = results.prediction.confidence
 
-                # Small check if there are no detections
-                if labels.size < 1:
-                    text = "No detections."
-                    response = {"text": text}
-                    # Reset continuous detections count for each target
-                    for tar in targets:
-                        continuous_detections[tar] = 0
-                else:
-                    # Count the number of each target
-                    counts = count_targets(labels, label_names, confidence)
-
-                    # Update continuous detections count for each target
-                    for tar in targets:
-                        if counts[tar] == previous_counts[tar]:
-                            continuous_detections[tar] += 1
-                        else:
-                            continuous_detections[tar] = 1
-
-                    # Check if the number of continuous detections exceeds the minimum threshold
-                    if any(continuous_detections[tar] >= num_valid_frames for tar in targets):
-                        # Prepare the response only if there is a change in the counts
-                        if counts != previous_counts:
-                            previous_counts = response = counts
-                            # Reset continuous detections count for each target
-                            for tar in targets:
-                                continuous_detections[tar] = 0
-                        else:
-                            response = {}
-                    else:
-                        response = {}
-
-                # Send the JSON response over ZeroMQ socket if there is a response
-                if response:
-                    # Send the detection data as a POST request
-                    requests.post(DETECTION_URL, json=response)
+                # run the detection manager
+                detection_manager.update_and_send_detections(labels, label_names, confidence)
 
     except KeyboardInterrupt:
+        stream.stop()
         raise stream.Break("Stopping the stream thread...")
     except Exception as e:
-        print(e)
         raise e
     
-    finally:
-        sock.close()
 
 if __name__ == "__main__":
     main()

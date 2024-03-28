@@ -1,4 +1,4 @@
 super-gradients
 flask-socketio
-opencv-contrib
+fire
 fastcore

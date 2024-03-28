@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
 
 app = Flask(__name__)
-socketio = SocketIO(app)
+socketio = SocketIO(app, logger=True, engineio_logger=True)
 
 # Configuration
 HOST = os.environ.get('HOST', 'localhost')

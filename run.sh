@@ -31,16 +31,12 @@ run_endpoint() {
 # Function to handle the termination of processes
 terminate_processes() {
     echo "Terminating processes..."
-    # Option 1: Use pkill for pattern matching, if applicable
+    # Use pkill for pattern matching
     pkill -f 'python see_mp/server.py'
     pkill -f 'python see_mp/client.py'
     pkill -f 'python see_mp/endpoint.py'
 
-    # # Option 2: Explicitly kill process groups
-    # kill -- -$server_pid
-    # kill -- -$find_pid
-
-    wait $server_pid $find_pid $endpoint_pid 2>/dev/null
+    wait $server_pid $client_pid $endpoint_pid 2>/dev/null
     exit 0
 }
 
@@ -53,8 +49,8 @@ case "$1" in
         run_server
         server_pid=$!
         run_find
-        find_pid=$!
-        wait $server_pid $find_pid
+        client_pid=$!
+        wait $server_pid $client_pid
         ;;
     -s|--server)
         run_server
@@ -63,8 +59,8 @@ case "$1" in
         ;;
     -f|--find)
         run_find
-        find_pid=$!
-        wait $find_pid
+        client_pid=$!
+        wait $client_pid
         ;;
     -e|--endpoint)
         run_endpoint

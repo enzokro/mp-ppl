@@ -5,49 +5,39 @@ from super_gradients.common.object_names import Models
 from see_mp.video_stream import VideoStreamer
 
 
+# zmq vars
+PROTOCOL = "tcp"
 PORT = 6767
+
+# model name and threshold value
 MODEL_NAME = Models.YOLO_NAS_S
-THR = 0.6
+THRESHOLD = 0.6
+
+# the classes we care about
+targets = ["person", "cat"]
 
 
-def initialize_zmq_socket(port):
-    """Initialize ZeroMQ context and socket for sending detections."""
-    context = zmq.Context()
-    socket = context.socket(zmq.PUB)
-    socket.bind(f"tcp://*:{port}")
-    return socket
-
-
-def count_targets(labels, label_names, targets, confidence, thr):
-    """Count the number of each target in the labels.
+def count_targets(labels, label_names, confidence, thr=THRESHOLD):
+    """Counts the number of each target in the labels.
     
-    Makes sure detections are above `thr` in confidence.
+    Only counts if the `confidence` of a detection is above `thr`.
     """
     counts = {tar: 0 for tar in targets}
-    for targ in targets:
-        count = sum([1 for i,l in enumerate(labels) if label_names[l] == targ
+    for tar in targets:
+        count = sum([1 for i,l in enumerate(labels) if label_names[l] == tar
                                                     and confidence[i] >= thr])
-        counts[targ] = count
+        counts[tar] = count
     return counts
-
-def prepare_response(counts):
-    """Prepare the response dictionary with the target counts."""
-    response = {
-        f"num_{targ}": count 
-        for targ, count in counts.items()
-    }
-    return response
 
 
 def main():
     # Initialize ZeroMQ socket for sending detections
-    results_socket = initialize_zmq_socket(PORT)
+    context = zmq.Context()
+    socket = context.socket(zmq.PUB)
+    socket.bind(f"{PROTOCOL}://*:{PORT}")
 
     # Load the detection model
     model = models.get(MODEL_NAME, pretrained_weights="coco")
-
-    # Define the target classes we care about
-    targets = ["person", "cat"]
 
     # Number of frames for an updated decision
     num_valid_frames = 15
@@ -75,29 +65,27 @@ def main():
                 text = "No detections."
                 response = {"text": text}
                 # Reset continuous detections count for each target
-                for targ in targets:
-                    continuous_detections[targ] = 0
+                for tar in targets:
+                    continuous_detections[tar] = 0
             else:
                 # Count the number of each target
-                counts = count_targets(labels, label_names, targets,
-                                       confidence, THR)
+                counts = count_targets(labels, label_names, confidence)
 
                 # Update continuous detections count for each target
-                for targ in targets:
-                    if counts[targ] == previous_counts[targ]:
-                        continuous_detections[targ] += 1
+                for tar in targets:
+                    if counts[tar] == previous_counts[tar]:
+                        continuous_detections[tar] += 1
                     else:
-                        continuous_detections[targ] = 1
+                        continuous_detections[tar] = 1
 
                 # Check if the number of continuous detections exceeds the minimum threshold
-                if any(continuous_detections[targ] >= num_valid_frames for targ in targets):
+                if any(continuous_detections[tar] >= num_valid_frames for tar in targets):
                     # Prepare the response only if there is a change in the counts
                     if counts != previous_counts:
-                        response = prepare_response(counts)
-                        previous_counts = counts
+                        previous_counts = response = counts
                         # Reset continuous detections count for each target
-                        for targ in targets:
-                            continuous_detections[targ] = 0
+                        for tar in targets:
+                            continuous_detections[tar] = 0
                     else:
                         response = {}
                 else:
@@ -107,7 +95,7 @@ def main():
             if response:
                 print(response)
                 json_response = json.dumps(response)
-                results_socket.send_string(json_response)
+                socket.send_string(json_response)
 
 
 if __name__ == "__main__":

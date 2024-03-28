@@ -64,6 +64,9 @@ class VideoStreamer:
             else:
                 logger.warning(f"Failed to read frame from video source: {self.video_source}")
                 break
+            # small check for graceful shutdown
+            if self.stop_event.is_set():
+                break
     
     def _update_frame_buffer(self, frame):
         "Updates the frame buffer with the latest frame."

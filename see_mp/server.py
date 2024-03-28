@@ -22,7 +22,7 @@ stop_thread = Event()
 def index():
     return render_template('index.html')
 
-
+@app.route('/detect', methods=['POST'])
 def handle_client_connection(conn, addr):
     print(f"Connected by {addr}")
     try:

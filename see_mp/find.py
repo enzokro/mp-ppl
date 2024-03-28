@@ -9,6 +9,8 @@ from see_mp.video_stream import VideoStreamer
 # zmq vars
 HOST = os.environ.get('HOST', 'localhost')
 PORT = int(os.environ.get('DETECTION_PORT', 6767))
+APP_PORT = int(os.environ.get('FLASK_PORT', 8989))
+DETECTION_URL = f'http://{HOST}:{APP_PORT}/detect'
 
 # model name and detection threshold value
 MODEL_NAME = Models.YOLO_NAS_S
@@ -93,9 +95,8 @@ def main():
 
                 # Send the JSON response over ZeroMQ socket if there is a response
                 if response:
-                    print(response)
-                    json_response = json.dumps(response)
-                    sock.sendall(json_response.encode())
+                    # Send the detection data as a POST request
+                    requests.post(DETECTION_URL, json=response)
 
     except KeyboardInterrupt:
         raise stream.Break("Stopping the stream thread...")

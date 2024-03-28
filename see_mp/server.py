@@ -26,9 +26,11 @@ def handle_detection():
     
     return jsonify({"status": "received"})
 
+
 def run_server():
     """Runs the application."""
     socketio.run(app, host=Config.HOST, port=Config.PORT)
+
 
 if __name__ == '__main__':
     try:

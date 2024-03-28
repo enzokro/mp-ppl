@@ -14,7 +14,7 @@ def index():
     """Renders the main site."""
     return render_template('index.html')
 
-@app.route('/detect', methods=['POST'])
+@app.route('/detections', methods=['POST'])
 def handle_detection():
     """Handles the detections from the client."""
     detection_data = request.json

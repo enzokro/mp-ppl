@@ -12,26 +12,27 @@ usage() {
     echo "  -h, --help        Display this help message"
 }
 
-# export HOST=localhost
-# export PORT=8765
-
-# Function to run the server command
 run_server() {
     echo "Running server command..."
-    python see_mp/server.py
-    #gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind $HOST:$PORT --chdir see_mp server:app
+    python see_mp/server.py &
 }
 
-# Function to run the find command
 run_find() {
     echo "Running find command..."
-    python see_mp/find.py
+    python see_mp/client.py &
 }
 
 # Function to handle the termination of processes
 terminate_processes() {
     echo "Terminating processes..."
-    kill $server_pid $find_pid
+    # Option 1: Use pkill for pattern matching, if applicable
+    pkill -f 'python see_mp/server.py'
+    pkill -f 'python see_mp/client.py'
+
+    # # Option 2: Explicitly kill process groups
+    # kill -- -$server_pid
+    # kill -- -$find_pid
+
     wait $server_pid $find_pid 2>/dev/null
     exit 0
 }
@@ -42,16 +43,20 @@ trap terminate_processes SIGINT SIGTERM
 # Parse command-line arguments
 case "$1" in
     -a|--all)
-        run_server & server_pid=$!
-        run_find & find_pid=$!
+        run_server
+        server_pid=$!
+        run_find
+        find_pid=$!
         wait $server_pid $find_pid
         ;;
     -s|--server)
-        run_server & server_pid=$!
+        run_server
+        server_pid=$!
         wait $server_pid
         ;;
     -f|--find)
-        run_find & find_pid=$!
+        run_find
+        find_pid=$!
         wait $find_pid
         ;;
     -h|--help)

@@ -1,11 +1,12 @@
 import json
-import zmq
+import socket
 from super_gradients.training import models
 from super_gradients.common.object_names import Models
 from see_mp.video_stream import VideoStreamer
 
 
 # zmq vars
+HOST = socket.gethostbyname("localhost")  #Note the extra letters "by"
 PROTOCOL = "tcp"
 PORT = 6767
 
@@ -32,9 +33,8 @@ def count_targets(labels, label_names, confidence, thr=THRESHOLD):
 
 def main():
     # Initialize ZeroMQ socket for sending detections
-    context = zmq.Context()
-    socket = context.socket(zmq.PUB)
-    socket.bind(f"{PROTOCOL}://*:{PORT}")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOST, PORT))
 
     # Load the detection model
     model = models.get(MODEL_NAME, pretrained_weights="coco")
@@ -95,7 +95,10 @@ def main():
             if response:
                 print(response)
                 json_response = json.dumps(response)
-                socket.send_string(json_response)
+                sock.sendall(json_response.encode())
+
+    # close up the socket at the end
+    sock.close()
 
 
 if __name__ == "__main__":

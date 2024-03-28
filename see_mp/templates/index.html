@@ -7,9 +7,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
     <script>
         $(document).ready(function() {
-            var socket = io();
-
+            var socket = io.connect('http://' + document.domain + ':' + location.port);
             socket.on('detection_result', function(data) {
+                console.log(data); // Log data for debugging
                 $('#result').text(JSON.stringify(data));
             });
         });

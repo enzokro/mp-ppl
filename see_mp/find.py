@@ -1,3 +1,4 @@
+import os
 import json
 import socket
 from super_gradients.training import models
@@ -6,17 +7,15 @@ from see_mp.video_stream import VideoStreamer
 
 
 # zmq vars
-HOST = socket.gethostbyname("localhost")  #Note the extra letters "by"
-PROTOCOL = "tcp"
-PORT = 6767
+HOST = os.environ.get('HOST', 'localhost')
+PORT = int(os.environ.get('DETECTION_PORT', 6767))
 
-# model name and threshold value
+# model name and detection threshold value
 MODEL_NAME = Models.YOLO_NAS_S
-THRESHOLD = 0.6
+THRESHOLD = 0.6 # TODO: class-based thresholds
 
 # the classes we care about
 targets = ["person", "cat"]
-
 
 def count_targets(labels, label_names, confidence, thr=THRESHOLD):
     """Counts the number of each target in the labels.
@@ -30,8 +29,8 @@ def count_targets(labels, label_names, confidence, thr=THRESHOLD):
         counts[tar] = count
     return counts
 
-
 def main():
+
     # Initialize ZeroMQ socket for sending detections
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((HOST, PORT))
@@ -45,61 +44,67 @@ def main():
     continuous_detections = {tar: 0 for tar in targets}
 
     # Stream over the default camera
-    with VideoStreamer(0) as stream:
-        while True:
-            img = stream.get_current_frame()
-            if img is None:
-                continue
+    try:
+        with VideoStreamer(0) as stream:
+            while True:
+                img = stream.get_current_frame()
+                if img is None:
+                    continue
 
-            # Detect objects in the image
-            results = model.predict(img, fuse_model=False)
+                # Detect objects in the image
+                results = model.predict(img, fuse_model=False)
 
-            # Parse out the detection results
-            boxes = results.prediction.bboxes_xyxy
-            label_names = results.class_names
-            labels = results.prediction.labels
-            confidence = results.prediction.confidence
+                # Parse out the detection results
+                boxes = results.prediction.bboxes_xyxy
+                label_names = results.class_names
+                labels = results.prediction.labels
+                confidence = results.prediction.confidence
 
-            # Small check if there are no detections
-            if labels.size < 1:
-                text = "No detections."
-                response = {"text": text}
-                # Reset continuous detections count for each target
-                for tar in targets:
-                    continuous_detections[tar] = 0
-            else:
-                # Count the number of each target
-                counts = count_targets(labels, label_names, confidence)
+                # Small check if there are no detections
+                if labels.size < 1:
+                    text = "No detections."
+                    response = {"text": text}
+                    # Reset continuous detections count for each target
+                    for tar in targets:
+                        continuous_detections[tar] = 0
+                else:
+                    # Count the number of each target
+                    counts = count_targets(labels, label_names, confidence)
 
-                # Update continuous detections count for each target
-                for tar in targets:
-                    if counts[tar] == previous_counts[tar]:
-                        continuous_detections[tar] += 1
-                    else:
-                        continuous_detections[tar] = 1
+                    # Update continuous detections count for each target
+                    for tar in targets:
+                        if counts[tar] == previous_counts[tar]:
+                            continuous_detections[tar] += 1
+                        else:
+                            continuous_detections[tar] = 1
 
-                # Check if the number of continuous detections exceeds the minimum threshold
-                if any(continuous_detections[tar] >= num_valid_frames for tar in targets):
-                    # Prepare the response only if there is a change in the counts
-                    if counts != previous_counts:
-                        previous_counts = response = counts
-                        # Reset continuous detections count for each target
-                        for tar in targets:
-                            continuous_detections[tar] = 0
+                    # Check if the number of continuous detections exceeds the minimum threshold
+                    if any(continuous_detections[tar] >= num_valid_frames for tar in targets):
+                        # Prepare the response only if there is a change in the counts
+                        if counts != previous_counts:
+                            previous_counts = response = counts
+                            # Reset continuous detections count for each target
+                            for tar in targets:
+                                continuous_detections[tar] = 0
+                        else:
+                            response = {}
                     else:
                         response = {}
-                else:
-                    response = {}
 
-            # Send the JSON response over ZeroMQ socket if there is a response
-            if response:
-                print(response)
-                json_response = json.dumps(response)
-                sock.sendall(json_response.encode())
+                # Send the JSON response over ZeroMQ socket if there is a response
+                if response:
+                    print(response)
+                    json_response = json.dumps(response)
+                    sock.sendall(json_response.encode())
 
-    # close up the socket at the end
-    sock.close()
-
+    except KeyboardInterrupt:
+        raise stream.Break("Stopping the stream thread...")
+    except Exception as e:
+        print(e)
+        raise e
+    
+    finally:
+        sock.close()
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@ from super_gradients.common.object_names import Models
 
 class Config:
     "Configuration for the application."
-    MODEL_NAME = Models.YOLO_NAS_M
+    MODEL_NAME = Models.YOLO_NAS_S
     THRESHOLD = 0.6
     NUM_VALID_FRAMES = 15
     TARGETS = ["person", "cat"]

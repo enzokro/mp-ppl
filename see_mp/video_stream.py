@@ -50,7 +50,7 @@ class VideoStreamer:
     
     def _start_frame_thread(self):
         "Start the background thread for reading frames."
-        self.thread = threading.Thread(target=self._read_frames)
+        self.thread = threading.Thread(target=self._read_frames, daemon=True)
         self.thread.start()
         logger.info(f"Started video capture from source: {self.video_source}")
     

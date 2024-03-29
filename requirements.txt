@@ -1,4 +1,8 @@
+cython
+numpy
+fastcore
+matplotlib
+gunicorn
 super-gradients
 flask-socketio
 fire
-fastcore
